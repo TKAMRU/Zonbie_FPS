@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ゾンビ FPS - 弾薬・リロード・モード切替アップデート版</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Arial', sans-serif;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        .ui-element {
+            position: absolute;
+            color: white;
+            text-shadow: 2px 2px 4px #000;
+            font-weight: bold;
+            z-index: 10;
+        }
+        #timer {
+            top: 20px;
+            left: 20px;
+            font-size: 24px;
+        }
+        #kill-counter {
+            top: 55px;
+            left: 20px;
+            font-size: 22px;
+            color: #ffcc00;
+        }
+        #fire-mode-display {
+            top: 90px;
+            left: 20px;
+            font-size: 18px;
+            color: #00ffcc;
+        }
+        
+        /* ゲージ群のレイアウト調整 */
+        #ui-bars-container {
+            bottom: 20px;
+            left: 20px;
+            width: 250px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .bar-label {
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+        .bar-bg {
+            width: 100%;
+            height: 12px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid #fff;
+        }
+        .bar-fill {
+            width: 100%;
+            height: 100%;
+            transition: width 0.05s linear;
+        }
+        
+        #dynamite-bar-container { display: block; }
+        #dynamite-bar { background-color: #3399ff; width: 100%; }
+        
+        #reload-bar-container { display: none; }
+        #reload-bar { background-color: #33cc33; width: 0%; }
+
+        #hp-bar-bg { height: 20px; border: 2px solid #fff; }
+        #hp-bar { background-color: #ff3333; height: 100%; }
+        #hp-text { font-size: 18px; margin-bottom: 2px; }
+
+        #weapon-info {
+            bottom: 20px;
+            right: 20px;
+            font-size: 20px;
+            text-align: right;
+        }
+        #ammo-display {
+            font-size: 26px;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        
+        #boss-hp-container {
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50%;
+            display: none;
+            text-align: center;
+        }
+        #boss-name {
+            font-size: 20px;
+            color: #ff3333;
+            margin-bottom: 5px;
+        }
+        #boss-hp-bar-bg {
+            width: 100%;
+            height: 15px;
+            background-color: rgba(0,0,0,0.5);
+            border: 1px solid #fff;
+        }
+        #boss-hp-bar {
+            width: 100%;
+            height: 100%;
+            background-color: #ff0000;
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+        }
+        h1 {
+            font-size: 64px;
+            color: #ff3333;
+            margin-bottom: 30px;
+            letter-spacing: 5px;
+        }
+        .menu-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .card {
+            background: #222;
+            border: 2px solid #555;
+            padding: 15px;
+            width: 210px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-align: center;
+        }
+        .card:hover, .card.selected {
+            border-color: #ff3333;
+            background: #331111;
+            transform: scale(1.05);
+        }
+        .card h3 { margin-top: 0; color: #ffcc00; }
+        .card p { font-size: 13px; color: #ccc; line-height: 1.5; }
+        button.start-btn {
+            padding: 15px 50px;
+            font-size: 24px;
+            background-color: #ff3333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button.start-btn:hover { background-color: #cc0000; }
+        #upgrade-screen { display: none; }
+        #upgrade-screen h2 { font-size: 40px; color: #ffcc00; margin-bottom: 30px; }
+        
+        #result-screen { display: none; }
+        #result-screen h2 { font-size: 56px; margin-bottom: 20px; }
+        .result-info { font-size: 24px; margin-bottom: 15px; color: #ddd; }
+        .result-info b { color: #fff; font-size: 28px; }
+
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            color: #00ff00;
+            font-size: 28px;
+            pointer-events: none;
+            z-index: 5;
+            text-align: center;
+            line-height: 20px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="crosshair">+</div>
+
+    <div id="timer" class="ui-element">TIME: 00:00</div>
+    <div id="kill-counter" class="ui-element">KILLS: 0 / 1000</div>
+    <div id="fire-mode-display" class="ui-element">MODE: -</div>
+    
+    <div id="ui-bars-container" class="ui-element">
+        <div id="dynamite-bar-container">
+            <div class="bar-label">DYNAMITE COOLDOWN</div>
+            <div class="bar-bg"><div id="dynamite-bar" class="bar-fill"></div></div>
+        </div>
+        <div id="reload-bar-container">
+            <div class="bar-label" style="color:#33cc33;">RELOADING...</div>
+            <div class="bar-bg"><div id="reload-bar" class="bar-fill"></div></div>
+        </div>
+        <div id="hp-container">
+            <div id="hp-text">HP: 100 / 100</div>
+            <div id="hp-bar-bg"><div id="hp-bar" class="bar-fill"></div></div>
+        </div>
+    </div>
+
+    <div id="weapon-info" class="ui-element">
+        <div id="ammo-display">AMMO: 250 / 250</div>
+        <span id="weapon-name-text">装着武器: なし</span><br>
+        <span style="font-size:13px; color:#aaa;">[WASD]:移動 [矢印キー]:視点 [SPACE]:ジャンプ<br>[E]:攻撃 [Q]:モード切替 [B]:ダイナマイト</span>
+    </div>
+
+    <div id="boss-hp-container" class="ui-element">
+        <div id="boss-name">BOSS</div>
+        <div id="boss-hp-bar-bg"><div id="boss-hp-bar"></div></div>
+    </div>
+
+    <div id="title-screen" class="overlay">
+        <h1>ゾンビ FPS</h1>
+        <div class="menu-container">
+            <div class="card selected" onclick="selectWeapon('handgun', this)">
+                <h3>拳銃</h3>
+                <p>移動速度：<b>速い</b><br>ダメージ: 30<br>発射速度: ちょいはやい<br>射程: 普通<br>※モード切替なし</p>
+            </div>
+            <div class="card" onclick="selectWeapon('assault', this)">
+                <h3>アサルトライフル</h3>
+                <p>移動速度：<b>普通</b><br>ダメージ: 38 (単発時:45)<br>発射速度: 速い (単発:遅め)<br>射程: 長い<br>※[Q]で単発/連射切替</p>
+            </div>
+            <div class="card" onclick="selectWeapon('shotgun', this)">
+                <h3>ショットガン</h3>
+                <p>移動速度：<b>中間</b><br>ダメージ: 100 (連射時:35)<br>発射速度: 極遅 (連射:爆速)<br>射程: <b style="color:#ffcc00;">超絶長い</b><br>※[Q]で単発/連射切替</p>
+            </div>
+            <div class="card" onclick="selectWeapon('machinegun', this)">
+                <h3>マシンガン</h3>
+                <p>移動速度：<b>おそい</b><br>ダメージ: 35<br>発射速度: 超絶速い<br>射程: 長い<br>※モード切替なし</p>
+            </div>
+        </div>
+        <button class="start-btn" onclick="startGame()">ゲーム開始</button>
+    </div>
+
+    <div id="upgrade-screen" class="overlay">
+        <h2>能力向上（パワーアップ選択）</h2>
+        <div class="menu-container">
+            <div class="card" onclick="chooseUpgrade('damage')">
+                <h3>攻撃力強化</h3>
+                <p>攻撃力が一律 <b>+10</b> 増加します。</p>
+            </div>
+            <div class="card" onclick="chooseUpgrade('speed')">
+                <h3>移動速度強化</h3>
+                <p>移動速度が <b>+15%</b> 上昇します。</p>
+            </div>
+            <div class="card" onclick="chooseUpgrade('maxhp')">
+                <h3>最大HP強化</h3>
+                <p>最大HPが <b>+10</b> 増加し、HPが全回復します。</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="result-screen" class="overlay">
+        <h2 id="result-title">GAME OVER</h2>
+        <div class="result-info">生き残った時間: <b id="result-time">00:00</b></div>
+        <div class="result-info">倒したゾンビの数: <b id="result-kills">0 体</b></div>
+        <div id="result-condition" style="font-size:16px; color:#aaa; margin-bottom:30px;">※クリア条件: 1000体KILL ＋ ボス撃破</div>
+        <button class="start-btn" onclick="location.reload()">もう一度プレイ</button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // 武器設定データ
+        const WEAPONS = {
+            handgun: { name: '拳銃', baseSpeed: 0.20, hasModes: false, damage: 30, fireRate: 300, range: 40 },
+            machinegun: { name: 'マシンガン', baseSpeed: 0.11, hasModes: false, damage: 35, fireRate: 60, range: 80 },
+            // モード切替を持つ武器は配下に構造を定義
+            assault: {
+                name: 'アサルトライフル',
+                baseSpeed: 0.15,
+                hasModes: true,
+                currentMode: 'AUTO', // 初期は連射
+                AUTO: { damage: 38, fireRate: 150, range: 80 },
+                SEMI: { damage: 45, fireRate: 350, range: 80 } // ショットガンよりちょっと速い連射
+            },
+            shotgun: {
+                name: 'ショットガン',
+                baseSpeed: 0.13,
+                hasModes: true,
+                currentMode: 'SEMI', // 初期は単発
+                SEMI: { damage: 100, fireRate: 1200, range: 140 }, // 射程をめっちゃ長く設定
+                AUTO: { damage: 35, fireRate: 150, range: 80 }   // 連射アサルトと同じ性能
+            }
+        };
+
+        let selectedWeaponKey = 'handgun';
+        let currentWeapon = WEAPONS.handgun;
+        let bonusDamage = 0;
+        let speedMultiplier = 1.0; 
+
+        // 弾薬システム関連
+        let totalAmmo = 250;       // 総所持弾数
+        let magazineAmmo = 100;    // 現在のマガジン内の弾数（100発で1回ロード）
+        let isReloading = false;
+        let reloadTimer = 0;
+        const RELOAD_DURATION = 2000; // リロード時間：2秒
+
+        let player = {
+            hp: 100, maxHp: 100, speed: 0.15, jumpVelocity: 0, isJumping: false, y: 0, eyeHeight: 1.45 
+        };
+
+        const ASSAULT_SPEED = 0.15;
+        const MAP_LIMIT = 95; 
+
+        let gameActive = false;
+        let gameTime = 0;
+        let killCount = 0;
+        let isBossDefeated = false;
+
+        let lastTimeUpdate = 0;
+        let lastMinuteMark = 0;
+
+        let lastFireTime = 0;
+        let lastDynamiteTime = 0;
+        const DYNAMITE_COOLDOWN = 5000;
+        const MAX_ZOMBIES = 40; 
+
+        const keys = { w: false, a: false, s: false, d: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false, v: false, e: false, b: false };
+
+        let scene, camera, renderer;
+        let terrain;
+        let zombies = [];
+        let dynamites = [];
+        let particles = [];
+        let obstacles = []; 
+
+        const raycaster = new THREE.Raycaster();
+
+        function selectWeapon(key, element) {
+            selectedWeaponKey = key;
+            currentWeapon = WEAPONS[key];
+            document.querySelectorAll('#title-screen .card').forEach(c => c.classList.remove('selected'));
+            element.classList.add('selected');
+        }
+
+        function startGame() {
+            document.getElementById('title-screen').style.display = 'none';
+            document.getElementById('weapon-name-text').innerText = `装着武器: ${currentWeapon.name}`;
+            updateAmmoUI();
+            updateModeUI();
+            
+            player.speed = currentWeapon.baseSpeed; 
+            initThree();
+            
+            for(let i = 0; i < MAX_ZOMBIES; i++) {
+                spawnZombie('normal');
+            }
+
+            gameActive = true;
+            lastTimeUpdate = performance.now();
+            animate();
+        }
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x667788);
+            scene.fog = new THREE.FogExp2(0x667788, 0.015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.05, 1000);
+            camera.position.set(0, player.eyeHeight, 0); 
+            camera.rotation.order = 'YXZ';
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.85); scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.7); dirLight.position.set(40, 100, 20); scene.add(dirLight);
+
+            const terrainSize = 200;
+            const geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, 40, 40);
+            geometry.rotateX(-Math.PI / 2);
+
+            const pos = geometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let x = pos.getX(i); let z = pos.getZ(i);
+                if (Math.abs(x) < MAP_LIMIT && Math.abs(z) < MAP_LIMIT) {
+                    let y = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 0.8; pos.setY(i, y);
+                }
+            }
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshLambertMaterial({ color: 0x446644 });
+            terrain = new THREE.Mesh(geometry, material); scene.add(terrain);
+
+            // 外壁
+            const wallMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            scene.add(createWall(terrainSize, 40, 4, 0, 15, MAP_LIMIT + 2, wallMat));
+            scene.add(createWall(terrainSize, 40, 4, 0, 15, -(MAP_LIMIT + 2), wallMat));
+            scene.add(createWall(4, 40, terrainSize, MAP_LIMIT + 2, 15, 0, wallMat));
+            scene.add(createWall(4, 40, terrainSize, -(MAP_LIMIT + 2), 15, 0, wallMat));
+
+            generateCity();
+
+            window.addEventListener('keydown', e => handleKey(e, true));
+            window.addEventListener('keyup', e => handleKey(e, false));
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createWall(w, h, d, x, y, z, mat) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            mesh.position.set(x, y, z);
+            return mesh;
+        }
+
+        function generateCity() {
+            const buildingCount = 20;
+            for(let i = 0; i < buildingCount; i++) {
+                let bx = (Math.random() - 0.5) * 140; let bz = (Math.random() - 0.5) * 140;
+                if(Math.abs(bx) < 15 && Math.abs(bz) < 15) continue;
+                let by = getTerrainHeight(bx, bz);
+
+                if (Math.random() > 0.5) {
+                    let bWidth = 10, bHeight = 25 + Math.random() * 15, bDepth = 10;
+                    const bGeo = new THREE.BoxGeometry(bWidth, bHeight, bDepth);
+                    const bMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+                    const building = new THREE.Mesh(bGeo, bMat); building.position.set(bx, by + bHeight / 2, bz);
+                    scene.add(building); obstacles.push({ x: bx, z: bz, radius: 7.0 });
+                } else {
+                    let hSize = 7;
+                    const houseGeo = new THREE.BoxGeometry(hSize, hSize, hSize);
+                    const houseMat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b });
+                    const house = new THREE.Mesh(houseGeo, houseMat); house.position.set(bx, by + hSize / 2, bz);
+                    scene.add(house); obstacles.push({ x: bx, z: bz, radius: 5.2 });
+
+                    const roofGeo = new THREE.ConeGeometry(hSize * 0.8, hSize * 0.6, 4); roofGeo.rotateY(Math.PI / 4);
+                    const roofMat = new THREE.MeshLambertMaterial({ color: 0xaa3333 });
+                    const roof = new THREE.Mesh(roofGeo, roofMat); roof.position.set(bx, by + hSize + (hSize * 0.6) / 2, bz);
+                    scene.add(roof);
+                }
+            }
+        }
+
+        function updateAmmoUI() {
+            document.getElementById('ammo-display').innerText = `AMMO: ${magazineAmmo} / ${totalAmmo}`;
+        }
+
+        function updateModeUI() {
+            const display = document.getElementById('fire-mode-display');
+            if (currentWeapon.hasModes) {
+                display.innerText = `MODE: ${currentWeapon.currentMode === 'AUTO' ? '連射 (AUTO)' : '単発 (SEMI)'}`;
+            } else {
+                display.innerText = `MODE: -`;
+            }
+        }
+
+        function handleKey(e, isDown) {
+            let key = e.key.toLowerCase();
+            
+            if (e.key === ' ' || e.code === 'Space') {
+                if (isDown && !player.isJumping && gameActive) {
+                    player.jumpVelocity = 0.22; player.isJumping = true;
+                }
+                return;
+            }
+
+            // Qキーによる射撃モード切り替え
+            if (key === 'q' && isDown && gameActive && !isReloading) {
+                if (currentWeapon.hasModes) {
+                    currentWeapon.currentMode = currentWeapon.currentMode === 'AUTO' ? 'SEMI' : 'AUTO';
+                    updateModeUI();
+                }
+                return;
+            }
+
+            if (keys.hasOwnProperty(key)) keys[key] = isDown;
+        }
+
+        function startReload() {
+            if (isReloading || totalAmmo <= 0 || magazineAmmo === 100) return;
+            isReloading = true;
+            reloadTimer = 0;
+            document.getElementById('reload-bar-container').style.display = 'block';
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function getTerrainHeight(x, z) {
+            if (Math.abs(x) > MAP_LIMIT || Math.abs(z) > MAP_LIMIT) return 0;
+            return Math.sin(x * 0.1) * Math.cos(z * 0.1) * 0.8;
+        }
+
+        function spawnZombie(type) {
+            let angle = Math.random() * Math.PI * 2; let distance = 35 + Math.random() * 35;
+            let x = camera.position.x + Math.cos(angle) * distance; let z = camera.position.z + Math.sin(angle) * distance;
+            x = Math.max(-MAP_LIMIT + 5, Math.min(MAP_LIMIT - 5, x)); z = Math.max(-MAP_LIMIT + 5, Math.min(MAP_LIMIT - 5, z));
+
+            let scale = 1.0, color = 0x22aa22, speed = ASSAULT_SPEED * 0.45, hp = 100, damage = 20, name = "ゾンビ";
+
+            if (!type || type === 'normal') {
+                let rand = Math.random();
+                if (rand < 0.08) { type = 'fast'; color = 0xdddd00; speed = ASSAULT_SPEED * 0.9; name = "俊足ゾンビ"; }
+                else if (rand < 0.15) { type = 'strong'; color = 0xaa0000; damage = 45; hp = 140; name = "強襲ゾンビ"; }
+            } else if (type === 'midboss') { scale = 1.8; color = 0x3333ff; speed = ASSAULT_SPEED * 0.7; hp = 250; damage = 30; name = "中ボスゾンビ"; }
+            else if (type === 'boss') { scale = 3.0; color = 0xaa00aa; speed = ASSAULT_SPEED * 0.5; hp = 500; damage = 40; name = "ボスゾンビ"; }
+
+            const group = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: color });
+            const clothMat = new THREE.MeshLambertMaterial({ color: (type==='fast')?0x444400:(type==='strong')?0x550000:0x334466 });
+
+            const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), clothMat); bodyMesh.position.y = 0.9; group.add(bodyMesh);
+            const headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), mat); headMesh.position.y = 1.45; group.add(headMesh);
+            const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.6), mat); lArm.position.set(-0.38, 1.0, -0.2);
+            const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.6), mat); rArm.position.set(0.38, 1.0, -0.2);
+            group.add(lArm); group.add(rArm);
+            const lLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.2), clothMat); lLeg.position.set(-0.18, 0.25, 0);
+            const rLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.2), clothMat); rLeg.position.set(0.18, 0.25, 0);
+            group.add(lLeg); group.add(rLeg);
+
+            const hitGeo = new THREE.BoxGeometry(0.8, 2.0, 0.8);
+            const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+            const hitTrigger = new THREE.Mesh(hitGeo, hitMat); hitTrigger.position.y = 1.0; group.add(hitTrigger);
+
+            group.scale.set(scale, scale, scale); group.position.set(x, getTerrainHeight(x, z), z); scene.add(group);
+
+            zombies.push({
+                mesh: group, targetMesh: hitTrigger, hp: hp, maxHp: hp, speed: speed, damage: damage, size: scale, type: type, name: name, lastAttack: 0
+            });
+        }
+
+        function replenishZombies() {
+            while (zombies.length < MAX_ZOMBIES) spawnZombie('normal');
+        }
+
+        function addKill(type) {
+            killCount++;
+            document.getElementById('kill-counter').innerText = `KILLS: ${killCount} / 1000`;
+            
+            if (type === 'boss') isBossDefeated = true;
+
+            // 35%の確率で35発の弾薬を追加ドロップ
+            if (Math.random() < 0.35) {
+                totalAmmo += 35;
+                updateAmmoUI();
+            }
+
+            if (killCount >= 1000 && isBossDefeated) endGame(true);
+        }
+
+        function getWeaponStats() {
+            if (currentWeapon.hasModes) {
+                return currentWeapon[currentWeapon.currentMode];
+            }
+            return currentWeapon;
+        }
+
+        function fireWeapon() {
+            if (isReloading) return;
+            
+            // マガジンに弾がない場合はリロードを開始して射撃中断
+            if (magazineAmmo <= 0) {
+                startReload();
+                return;
+            }
+
+            const now = performance.now();
+            const stats = getWeaponStats();
+
+            if (now - lastFireTime < stats.fireRate) return;
+            lastFireTime = now;
+
+            // 弾の消費
+            magazineAmmo--;
+            totalAmmo--;
+            updateAmmoUI();
+
+            const targetDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+            raycaster.set(camera.position, targetDirection);
+            raycaster.near = 0;
+
+            createLineEffect(targetDirection, stats.range);
+
+            const targets = zombies.map(z => z.targetMesh);
+            const intersects = raycaster.intersectObjects(targets);
+
+            if (intersects.length > 0) {
+                const hitMesh = intersects[0].object;
+                const distance = intersects[0].distance;
+
+                if (distance <= stats.range) {
+                    const zombie = zombies.find(z => z.targetMesh === hitMesh);
+                    if (zombie) {
+                        let finalDamage = stats.damage + bonusDamage;
+                        zombie.hp -= finalDamage;
+                        createHitParticle(intersects[0].point, new THREE.Color(0x22aa22));
+                        updateBossHpBar();
+
+                        if (zombie.hp <= 0) {
+                            scene.remove(zombie.mesh);
+                            let zType = zombie.type;
+                            zombies = zombies.filter(z => z !== zombie);
+                            updateBossHpBar();
+                            addKill(zType);
+                            replenishZombies();
+                        }
+                    }
+                }
+            }
+
+            // 撃ちきり時に自動リロード
+            if (magazineAmmo <= 0) {
+                startReload();
+            }
+        }
+
+        function throwDynamite() {
+            const now = performance.now();
+            if (now - lastDynamiteTime < DYNAMITE_COOLDOWN) return;
+            lastDynamiteTime = now;
+
+            const geo = new THREE.CylinderGeometry(0.1, 0.1, 0.4);
+            const mat = new THREE.MeshBasicMaterial({color: 0xff0000});
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(camera.position).add(new THREE.Vector3(0, -0.1, -0.3).applyQuaternion(camera.quaternion));
+            
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            dir.y += 0.2; dir.normalize().multiplyScalar(0.4);
+
+            scene.add(mesh);
+            dynamites.push({ mesh: mesh, velocity: dir, grav: 0.015, life: 60 });
+        }
+
+        function createLineEffect(dir, range) {
+            const p1 = camera.position.clone().add(new THREE.Vector3(0, -0.1, -0.1).applyQuaternion(camera.quaternion));
+            const p2 = camera.position.clone().add(dir.clone().multiplyScalar(range));
+            const points = [p1, p2];
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.LineBasicMaterial({color: 0xffcc00});
+            const line = new THREE.Line(geo, mat); scene.add(line);
+            setTimeout(() => scene.remove(line), 50);
+        }
+
+        function createHitParticle(pos, color) {
+            for(let i=0; i<5; i++){
+                const pGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+                const pMat = new THREE.MeshBasicMaterial({color: color});
+                const p = new THREE.Mesh(pGeo, pMat); p.position.copy(pos); scene.add(p);
+                particles.push({ mesh: p, vel: new THREE.Vector3((Math.random()-0.5)*0.2, Math.random()*0.2, (Math.random()-0.5)*0.2), life: 20 });
+            }
+        }
+
+        function explodeDynamite(pos) {
+            for(let i=0; i<20; i++){
+                const pMat = new THREE.MeshBasicMaterial({color: 0xff5500});
+                const p = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), pMat); p.position.copy(pos); scene.add(p);
+                particles.push({ mesh: p, vel: new THREE.Vector3((Math.random()-0.5)*0.5, Math.random()*0.5, (Math.random()-0.5)*0.5), life: 30 });
+            }
+
+            zombies.forEach(zombie => {
+                let dist = zombie.mesh.position.distanceTo(pos);
+                if (dist < 12) {
+                    const stats = getWeaponStats();
+                    zombie.hp -= (stats.damage + bonusDamage) * 3;
+                    if (zombie.hp <= 0) {
+                        setTimeout(() => { 
+                            scene.remove(zombie.mesh);
+                            let zType = zombie.type; zombies = zombies.filter(z => z !== zombie);
+                            updateBossHpBar(); addKill(zType); replenishZombies();
+                        }, 0);
+                    }
+                }
+            });
+            updateBossHpBar();
+        }
+
+        function updateBossHpBar() {
+            let activeBoss = zombies.find(z => z.type === 'boss') || zombies.find(z => z.type === 'midboss');
+            const container = document.getElementById('boss-hp-container');
+            if (activeBoss && activeBoss.hp > 0) {
+                container.style.display = 'block';
+                document.getElementById('boss-name').innerText = activeBoss.name;
+                let pct = Math.max(0, (activeBoss.hp / activeBoss.maxHp) * 100);
+                document.getElementById('boss-hp-bar').style.width = pct + '%';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function triggerUpgrade() {
+            gameActive = false;
+            document.getElementById('upgrade-screen').style.display = 'flex';
+        }
+
+        function chooseUpgrade(type) {
+            if (type === 'damage') bonusDamage += 10;
+            else if (type === 'speed') speedMultiplier += 0.15; 
+            else if (type === 'maxhp') { player.maxHp += 10; player.hp = player.maxHp; }
+            
+            document.getElementById('hp-text').innerText = `HP: ${Math.floor(player.hp)} / ${player.maxHp}`;
+            document.getElementById('hp-bar').style.width = `${(player.hp / player.maxHp) * 100}%`;
+            document.getElementById('upgrade-screen').style.display = 'none';
+            lastTimeUpdate = performance.now(); gameActive = true; animate();
+        }
+
+        function endGame(isClear) {
+            gameActive = false;
+            let min = Math.floor(gameTime / 60); let sec = Math.floor(gameTime % 60);
+            let timeStr = `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+            const titleEl = document.getElementById('result-title');
+            if (isClear) { titleEl.innerText = "🏆 GAME CLEAR !!"; titleEl.style.color = "#ffcc00"; }
+            else { titleEl.innerText = "💥 GAME OVER"; titleEl.style.color = "#ff3333"; }
+            document.getElementById('result-time').innerText = timeStr;
+            document.getElementById('result-kills').innerText = `${killCount} 体`;
+            document.getElementById('result-screen').style.display = 'flex';
+        }
+
+        function animate() {
+            if (!gameActive) return;
+            requestAnimationFrame(animate);
+
+            const now = performance.now();
+            const delta = (now - lastTimeUpdate) / 1000;
+            lastTimeUpdate = now;
+
+            gameTime += delta;
+            let displayMin = Math.floor(gameTime / 60); let displaySec = Math.floor(gameTime % 60);
+            document.getElementById('timer').innerText = `TIME: ${String(displayMin).padStart(2,'0')}:${String(displaySec).padStart(2,'0')}`;
+
+            // ダイナマイトのクールダウンバー同期計算
+            let dTimeLeft = now - lastDynamiteTime;
+            let dPct = Math.min(100, (dTimeLeft / DYNAMITE_COOLDOWN) * 100);
+            document.getElementById('dynamite-bar').style.width = dPct + '%';
+
+            // リロード進捗処理
+            if (isReloading) {
+                reloadTimer += delta * 1000;
+                let rPct = Math.min(100, (reloadTimer / RELOAD_DURATION) * 100);
+                document.getElementById('reload-bar').style.width = rPct + '%';
+
+                if (reloadTimer >= RELOAD_DURATION) {
+                    // リロード完了
+                    isReloading = false;
+                    document.getElementById('reload-bar-container').style.display = 'none';
+                    // 100発チャージ（総弾数が100発未満なら残弾すべて）
+                    let reloadAmount = Math.min(100, totalAmmo + magazineAmmo);
+                    magazineAmmo = reloadAmount;
+                    updateAmmoUI();
+                }
+            }
+
+            if (Math.floor(gameTime) > 0 && Math.floor(gameTime) % 60 === 0 && Math.floor(gameTime) !== lastMinuteMark) {
+                lastMinuteMark = Math.floor(gameTime); triggerUpgrade(); return;
+            }
+
+            let currentSecond = Math.floor(gameTime);
+            if (currentSecond > 0 && currentSecond % 300 === 0 && !zombies.some(z => z.type === 'midboss' && gameTime - lastTimeUpdate < 2)) {
+                if (currentSecond % 600 !== 0) spawnZombie('midboss'); 
+            }
+            if (currentSecond > 0 && currentSecond % 600 === 0 && !zombies.some(z => z.type === 'boss' && gameTime - lastTimeUpdate < 2)) {
+                spawnZombie('boss');
+            }
+
+            if (keys.arrowleft) camera.rotation.y += 0.04;
+            if (keys.arrowright) camera.rotation.y -= 0.04;
+            if (keys.arrowup) camera.rotation.x += 0.03;
+            if (keys.arrowdown) camera.rotation.x -= 0.03;
+            camera.rotation.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, camera.rotation.x));
+
+            const moveVector = new THREE.Vector3();
+            if (keys.w) moveVector.z -= 1; if (keys.s) moveVector.z += 1;
+            if (keys.a) moveVector.x -= 1; if (keys.d) moveVector.x += 1;
+            moveVector.normalize().applyQuaternion(camera.quaternion); moveVector.y = 0; 
+            
+            let currentMoveSpeed = player.speed * speedMultiplier;
+            if (player.isJumping) currentMoveSpeed *= 1.3; 
+            moveVector.normalize().multiplyScalar(currentMoveSpeed);
+            
+            let nextX = camera.position.x + moveVector.x; let nextZ = camera.position.z + moveVector.z;
+
+            let playerHitObstacle = false;
+            for (let obs of obstacles) {
+                let dx = nextX - obs.x; let dz = nextZ - obs.z;
+                if (Math.sqrt(dx * dx + dz * dz) < obs.radius + 0.5) { playerHitObstacle = true; break; }
+            }
+
+            if (!playerHitObstacle && Math.abs(nextX) < MAP_LIMIT && Math.abs(nextZ) < MAP_LIMIT) {
+                camera.position.x = nextX; camera.position.z = nextZ;
+            }
+
+            if (player.isJumping) {
+                player.jumpVelocity -= 0.01; player.y += player.jumpVelocity;
+                let floorY = getTerrainHeight(camera.position.x, camera.position.z);
+                if (player.y <= floorY) { player.y = floorY; player.jumpVelocity = 0; player.isJumping = false; }
+            } else {
+                player.y = getTerrainHeight(camera.position.x, camera.position.z);
+            }
+            camera.position.y = player.y + player.eyeHeight; 
+
+            if (keys.e) fireWeapon();
+            if (keys.b) throwDynamite();
+
+            // 敵処理
+            zombies.forEach(zombie => {
+                let dir = new THREE.Vector3().copy(camera.position).sub(zombie.mesh.position);
+                dir.y = 0; dir.normalize();
+                
+                let zNextX = zombie.mesh.position.x + dir.x * zombie.speed;
+                let zNextZ = zombie.mesh.position.z + dir.z * zombie.speed;
+
+                let zombieHitObstacle = false;
+                for (let obs of obstacles) {
+                    let dx = zNextX - obs.x; let dz = zNextZ - obs.z;
+                    if (Math.sqrt(dx * dx + dz * dz) < obs.radius + (zombie.size * 0.4)) { zombieHitObstacle = true; break; }
+                }
+
+                if (!zombieHitObstacle) {
+                    zombie.mesh.position.x = zNextX; zombie.mesh.position.z = zNextZ;
+                } else {
+                    zombie.mesh.position.x += (dir.z * 0.5) * zombie.speed;
+                    zombie.mesh.position.z += (-dir.x * 0.5) * zombie.speed;
+                }
+
+                zombie.mesh.lookAt(camera.position.x, zombie.mesh.position.y, camera.position.z);
+                zombie.mesh.position.y = getTerrainHeight(zombie.mesh.position.x, zombie.mesh.position.z);
+
+                let dist = zombie.mesh.position.distanceTo(camera.position);
+                if (dist < (zombie.size * 1.2) + 0.8) {
+                    if (now - zombie.lastAttack > 1200) { 
+                        zombie.lastAttack = now; player.hp -= zombie.damage;
+                        document.getElementById('hp-text').innerText = `HP: ${Math.max(0, Math.floor(player.hp))} / ${player.maxHp}`;
+                        document.getElementById('hp-bar').style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`;
+                        if (player.hp <= 0) endGame(false);
+                    }
+                }
+            });
+
+            // ダイナマイト更新
+            for (let i = dynamites.length - 1; i >= 0; i--) {
+                let d = dynamites[i]; d.mesh.position.add(d.velocity); d.velocity.y -= d.grav; 
+                let floorY = getTerrainHeight(d.mesh.position.x, d.mesh.position.z);
+                if (d.mesh.position.y <= floorY) { d.mesh.position.y = floorY; d.velocity.set(0,0,0); }
+                d.life--;
+                if (d.life <= 0) { explodeDynamite(d.mesh.position); scene.remove(d.mesh); dynamites.splice(i, 1); }
+            }
+
+            // パーティクル
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i]; p.mesh.position.add(p.vel); p.life--;
+                if(p.life <= 0){ scene.remove(p.mesh); particles.splice(i, 1); }
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
